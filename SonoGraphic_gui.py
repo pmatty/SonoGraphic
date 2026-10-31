@@ -598,14 +598,21 @@ class CollapsibleSection(QWidget):
 
 
 class FilePicker(QWidget):
-    def __init__(self, label, filters, save=False, directory=False):
+    # Class-level variable to store the shared initial directory across all pickers
+    last_directory = str(Path.home())
+
+    def __init__(self, label, filters="", save=False, directory=False):
         super().__init__()
         self.filters = filters
         self.save = save
         self.directory = directory
         self.edit = QLineEdit()
-        self.edit.setPlaceholderText("Optional" if label.lower().find("optional") >= 0 else "Choose a file…")
+        self.edit.setPlaceholderText("Optional" if "optional" in label.lower() else "Choose a file…")
         self.button = QPushButton("Browse")
+        self.button.setStyleSheet(
+            "QPushButton { background-color: #3c3f41; color: white; border: 1px solid #555; border-radius: 4px; padding: 5px 10px; }"
+            "QPushButton:hover { background-color: #4c5052; }"
+        )
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.edit, 1)
@@ -613,15 +620,25 @@ class FilePicker(QWidget):
         self.button.clicked.connect(self.browse)
 
     def browse(self):
-        current = self.edit.text().strip()
-        if self.directory:
-            value = QFileDialog.getExistingDirectory(self, "Choose output folder", current or str(Path.home()))
-        elif self.save:
-            value, _ = QFileDialog.getSaveFileName(self, "Choose file", current, self.filters)
+        # Priority: 1. Text already in the box -> 2. Last folder picked anywhere -> 3. Home directory
+        current_text = self.edit.text().strip()
+        if current_text:
+            start_dir = current_text if Path(current_text).is_dir() else str(Path(current_text).parent)
         else:
-            value, _ = QFileDialog.getOpenFileName(self, "Choose file", current or str(Path.home()), self.filters)
+            start_dir = FilePicker.last_directory
+
+        if self.directory:
+            value = QFileDialog.getExistingDirectory(self, "Choose folder", start_dir)
+        elif self.save:
+            value, _ = QFileDialog.getSaveFileName(self, "Choose file", start_dir, self.filters)
+        else:
+            value, _ = QFileDialog.getOpenFileName(self, "Choose file", start_dir, self.filters)
+
         if value:
             self.edit.setText(value)
+            # Store folder path globally for future file picks
+            p = Path(value)
+            FilePicker.last_directory = str(p if p.is_dir() else p.parent)
 
     def text(self):
         return self.edit.text().strip()
@@ -639,14 +656,43 @@ class MainWindow(QMainWindow):
 
     def _apply_style(self):
         self.setStyleSheet("""
-            QMainWindow { background: #fafafa; }
-            QGroupBox { font-weight: 600; border: 1px solid #d5d5d5;
-                        border-radius: 6px; margin-top: 10px; padding: 8px; }
-            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
-            QPushButton { padding: 7px 10px; }
-            QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
-                padding: 5px; border: 1px solid #c8c8c8; border-radius: 4px;
-                background: white;
+            QMainWindow, QWidget { 
+                background-color: #2b2b2b; 
+                color: #ffffff; 
+            }
+            QLabel { 
+                color: #ffffff; 
+            }
+            QGroupBox { 
+                font-weight: 600; 
+                border: 1px solid #555555;
+                border-radius: 6px; 
+                margin-top: 10px; 
+                padding: 8px; 
+                color: #ffffff; 
+            }
+            QGroupBox::title { 
+                subcontrol-origin: margin; 
+                left: 10px; 
+                padding: 0 4px; 
+                color: #ffffff; 
+            }
+            QPushButton { 
+                padding: 7px 10px; 
+                background-color: #3c3f41; 
+                color: #ffffff; 
+                border: 1px solid #555555; 
+                border-radius: 4px; 
+            }
+            QPushButton:hover { 
+                background-color: #4c5052; 
+            }
+            QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit {
+                padding: 5px; 
+                border: 1px solid #555555; 
+                border-radius: 4px;
+                background-color: #ffffff; 
+                color: #000000;
             }
         """)
 
@@ -656,7 +702,7 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(root)
         header = QHBoxLayout()
         title = QLabel("SonoGraphic")
-        title.setStyleSheet("font-size: 23px; font-weight: 700;")
+        title.setStyleSheet("font-size: 23px; font-weight: 700; color: #1f3a5f;")
         subtitle = QLabel("Bar-aligned sonograms for a fixed-media staff")
         subtitle.setStyleSheet("color: #666;")
         header.addWidget(title)
@@ -758,7 +804,7 @@ class MainWindow(QMainWindow):
 
         output = QGroupBox("Output")
         of = QFormLayout(output)
-        self.out = FilePicker("Output folder", directory=True)
+        self.out = FilePicker("Output folder", "", directory=True)
         self.out.edit.setText(str(Path.cwd() / "strips"))
         of.addRow("Save results to", self.out)
         left_layout.addWidget(output)
